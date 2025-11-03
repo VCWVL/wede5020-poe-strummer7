@@ -245,3 +245,174 @@
   document.head.appendChild(styleEl);
 
 })();
+
+// Off-page SEO helpers: social meta, share bar, copy link, and backlink outreach export.
+
+(function () {
+  'use strict';
+
+  const q = s => document.querySelector(s);
+  const qa = s => Array.from(document.querySelectorAll(s));
+  const pageUrl = () => location.href;
+  const pageTitle = () => document.title || q('h1')?.textContent?.trim() || 'Goal Gear';
+  const pageDesc = () => (document.querySelector('meta[name="description"]')?.content) || '';
+
+  // Inject Open Graph & Twitter meta if missing
+  function ensureMeta() {
+    const og = (prop, content) => {
+      if (!document.querySelector(`meta[property="${prop}"]`)) {
+        const m = document.createElement('meta');
+        m.setAttribute('property', prop);
+        m.content = content;
+        document.head.appendChild(m);
+      }
+    };
+    const tw = (name, content) => {
+      if (!document.querySelector(`meta[name="${name}"]`)) {
+        const m = document.createElement('meta');
+        m.name = name;
+        m.content = content;
+        document.head.appendChild(m);
+      }
+    };
+
+    const title = pageTitle();
+    const desc = pageDesc();
+    const url = pageUrl();
+    const image = location.origin + '/images/rmHomeKit.jpg'; // update to a real image path if available
+
+    og('og:title', title);
+    og('og:description', desc || 'Goal Gear — premium soccer jerseys and kits.');
+    og('og:url', url);
+    og('og:type', 'website');
+    og('og:image', image);
+
+    tw('twitter:card', 'summary_large_image');
+    tw('twitter:title', title);
+    tw('twitter:description', desc || 'Goal Gear — premium soccer jerseys and kits.');
+    tw('twitter:image', image);
+  }
+
+  // JSON-LD SocialProfile (sameAs) injection - edit profiles array as needed
+  function injectSocialJsonLd() {
+    if (document.querySelector('script[type="application/ld+json"][data-offpage]')) return;
+    const profiles = [
+      'https://www.facebook.com/yourpage',
+      'https://twitter.com/yourhandle',
+      'https://www.instagram.com/yourprofile',
+      'https://www.linkedin.com/company/yourcompany'
+    ];
+    const ld = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Goal Gear",
+      "url": location.origin + '/',
+      "sameAs": profiles
+    };
+    const s = document.createElement('script');
+    s.type = 'application/ld+json';
+    s.setAttribute('data-offpage', '1');
+    s.text = JSON.stringify(ld);
+    document.head.appendChild(s);
+  }
+
+  // Create share bar with icons
+  function createShareBar() {
+    if (q('#share-bar-offpage')) return;
+
+    const container = document.createElement('div');
+    container.id = 'share-bar-offpage';
+    container.setAttribute('aria-label', 'Share this page');
+    Object.assign(container.style, {
+      position: 'fixed',
+      bottom: '0',
+      left: '0',
+      right: '0',
+      background: 'white',
+      padding: '12px',
+      display: 'flex',
+      justifyContent: 'center',
+      gap: '20px',
+      boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+      zIndex: 9999
+    });
+
+    const makeIconBtn = (icon, href, target = '_blank', title) => {
+      const a = document.createElement('a');
+      a.className = 'share-btn';
+      a.innerHTML = icon;
+      a.href = href;
+      a.target = target;
+      a.rel = 'noopener noreferrer';
+      a.title = title;
+      Object.assign(a.style, {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '40px',
+        height: '40px',
+        borderRadius: '50%',
+        background: '#f8f9fa',
+        color: '#000',
+        textDecoration: 'none',
+        fontSize: '20px',
+        transition: 'transform 0.2s',
+        cursor: 'pointer'
+      });
+      a.addEventListener('mouseover', () => {
+        a.style.transform = 'scale(1.1)';
+      });
+      a.addEventListener('mouseout', () => {
+        a.style.transform = 'scale(1)';
+      });
+      return a;
+    };
+
+    const url = encodeURIComponent(pageUrl());
+    const title = encodeURIComponent(pageTitle());
+    const desc = encodeURIComponent(pageDesc());
+
+    // Icons using Unicode or emoji (can be replaced with SVG for better quality)
+    const wa = makeIconBtn('📱', `https://api.whatsapp.com/send?text=${title}%20${url}`, '_blank', 'Share on WhatsApp');
+    const ig = makeIconBtn('📸', `https://instagram.com`, '_blank', 'Follow us on Instagram');
+    const mail = makeIconBtn('✉️', `mailto:?subject=${title}&body=${desc}%0A%0A${url}`, '_self', 'Share via Email');
+
+    // Style specific icons
+    wa.style.background = '#25D366';
+    wa.style.color = '#fff';
+    ig.style.background = '#E4405F';
+    ig.style.color = '#fff';
+    mail.style.background = '#EA4335';
+    mail.style.color = '#fff';
+
+    [wa, ig, mail].forEach(el => container.appendChild(el));
+    
+    // Add margin to body to prevent share bar from overlapping content
+    document.body.style.marginBottom = '70px';
+    
+    document.body.appendChild(container);
+
+    // Add hover styles
+    const styleEl = document.createElement('style');
+    styleEl.textContent = `
+      .share-btn:hover {
+        opacity: 0.9;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      }
+    `;
+    document.head.appendChild(styleEl);
+  }
+
+  // Initialize only meta and share bar
+  document.addEventListener('DOMContentLoaded', () => {
+    ensureMeta();
+    injectSocialJsonLd();
+    createShareBar();
+  });
+
+  // Remove backlink export function and keep only share functionality
+  window.OffpageSEO = {
+    ensureMeta,
+    createShareBar
+  };
+})();
