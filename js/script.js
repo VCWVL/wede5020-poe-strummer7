@@ -416,3 +416,285 @@
     createShareBar
   };
 })();
+
+/* ----------------- Interactive features & map integration ----------------- */
+(function () {
+  'use strict';
+
+  const q = s => document.querySelector(s);
+  const qa = s => Array.from(document.querySelectorAll(s));
+
+  // inject small UI styles for modal/tooltips/map
+  (function injectStyles() {
+    if (document.getElementById('interactive-styles')) return;
+    const css = `
+      /* Lightbox modal */
+      .ig-modal { position: fixed; inset: 0; display:flex;align-items:center;justify-content:center;
+                  background: rgba(0,0,0,0.75); z-index: 12000; }
+      .ig-modal .ig-content { max-width: 90%; max-height: 90%; display:flex;flex-direction:column;align-items:center; }
+      .ig-modal img { max-width: 100%; max-height: calc(100vh - 120px); border-radius:6px; }
+      .ig-modal .ig-caption { color:#fff; margin-top:8px; font-size:0.95rem; text-align:center; }
+      .ig-modal .ig-close { position:absolute; top:18px; right:22px; background:#fff;color:#111;border-radius:50%;width:36px;height:36px;border:none;cursor:pointer; }
+
+      /* tooltip */
+      .ig-tooltip { position: absolute; background: rgba(0,0,0,0.85); color: #fff; padding:6px 8px; border-radius:4px; font-size:12px; pointer-events:none; transform: translateY(-8px); z-index:13000; }
+
+      /* map container */
+      #store-map { width: 100%; height: 360px; border-radius:8px; margin-top:12px; border:1px solid #e0e0e0; }
+
+      /* product filter bar */
+      .ig-filterbar { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:14px 0; }
+      .ig-filterbar select, .ig-filterbar input[type="range"], .ig-filterbar button { padding:8px; border-radius:6px; border:1px solid #d0d0d0; }
+    `;
+    const s = document.createElement('style');
+    s.id = 'interactive-styles';
+    s.textContent = css;
+    document.head.appendChild(s);
+  })();
+
+  // ---------- Lightbox for images ----------
+  function initLightbox() {
+    if (window._igLightboxInit) return;
+    window._igLightboxInit = true;
+
+    function openLightbox(src, caption) {
+      const modal = document.createElement('div');
+      modal.className = 'ig-modal';
+      modal.innerHTML = `
+        <button class="ig-close" aria-label="Close">✕</button>
+        <div class="ig-content">
+          <img src="${src}" alt="${caption || ''}">
+          <div class="ig-caption">${caption || ''}</div>
+        </div>
+      `;
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal || e.target.classList.contains('ig-close')) modal.remove();
+      });
+      document.body.appendChild(modal);
+    }
+
+    qa('.card img, img.product-thumb').forEach(img => {
+      img.style.cursor = 'zoom-in';
+      img.addEventListener('click', () => openLightbox(img.src, img.alt || img.title || ''));
+    });
+  }
+
+  // ---------- Simple tooltip system ----------
+  function initTooltips() {
+    let tipEl = null;
+    function createTip() {
+      tipEl = document.createElement('div');
+      tipEl.className = 'ig-tooltip';
+      document.body.appendChild(tipEl);
+    }
+    function showTip(text, x, y) {
+      if (!tipEl) createTip();
+      tipEl.textContent = text;
+      tipEl.style.display = 'block';
+      tipEl.style.left = `${x}px`;
+      tipEl.style.top = `${y}px`;
+    }
+    function hideTip() { if (tipEl) tipEl.style.display = 'none'; }
+
+    qa('[data-tooltip]').forEach(el => {
+      el.addEventListener('mouseenter', (e) => {
+        const r = el.getBoundingClientRect();
+        showTip(el.getAttribute('data-tooltip'), r.left + r.width/2, r.top + window.scrollY - 8);
+      });
+      el.addEventListener('mouseleave', hideTip);
+      el.addEventListener('mousemove', (e) => {
+        if (tipEl) { tipEl.style.left = `${e.pageX + 12}px`; tipEl.style.top = `${e.pageY - 18}px`; }
+      });
+    });
+  }
+
+  // ---------- Product filters (category + price + sort) ----------
+  function initProductFilters() {
+    const productContainer = q('.container') || q('.product-list') || q('#products');
+    if (!productContainer) return;
+
+    // determine product cards
+    const cards = qa('.card', productContainer) || qa('.product-card', productContainer);
+    if (!cards.length) return;
+
+    // collect categories & price range
+    const categories = new Set();
+    let minPrice = Infinity, maxPrice = 0;
+    cards.forEach(c => {
+      const cat = c.dataset.category || c.getAttribute('data-cat') || 'Other';
+      categories.add(cat);
+      const p = parseFloat(c.dataset.price || c.getAttribute('data-price') || '0') || 0;
+      minPrice = Math.min(minPrice, p);
+      maxPrice = Math.max(maxPrice, p);
+    });
+
+    // create filter bar
+    const bar = document.createElement('div');
+    bar.className = 'ig-filterbar';
+
+    const catSelect = document.createElement('select');
+    const optAll = document.createElement('option'); optAll.value=''; optAll.textContent = 'All Categories';
+    catSelect.appendChild(optAll);
+    Array.from(categories).sort().forEach(cat => {
+      const o = document.createElement('option'); o.value = cat; o.textContent = cat; catSelect.appendChild(o);
+    });
+
+    const priceLabel = document.createElement('label');
+    priceLabel.textContent = `Max price: R${Math.round(maxPrice)}`;
+    const priceRange = document.createElement('input');
+    priceRange.type = 'range';
+    priceRange.min = Math.floor(minPrice || 0);
+    priceRange.max = Math.ceil(maxPrice || 1000);
+    priceRange.value = Math.ceil(maxPrice || 1000);
+    priceRange.addEventListener('input', () => {
+      priceLabel.textContent = `Max price: R${priceRange.value}`;
+      applyFilters();
+    });
+
+    const sortSelect = document.createElement('select');
+    ['Default','Price: Low → High','Price: High → Low','Newest'].forEach(oText => {
+      const o = document.createElement('option'); o.value = oText; o.textContent = oText; sortSelect.appendChild(o);
+    });
+
+    const resetBtn = document.createElement('button');
+    resetBtn.textContent = 'Reset';
+    resetBtn.addEventListener('click', () => {
+      catSelect.value = ''; priceRange.value = priceRange.max; sortSelect.value = 'Default'; applyFilters();
+    });
+
+    bar.appendChild(catSelect);
+    bar.appendChild(priceLabel);
+    bar.appendChild(priceRange);
+    bar.appendChild(sortSelect);
+    bar.appendChild(resetBtn);
+
+    productContainer.parentNode.insertBefore(bar, productContainer);
+
+    function applyFilters() {
+      const chosenCat = catSelect.value;
+      const maxP = parseFloat(priceRange.value);
+      const sortBy = sortSelect.value;
+
+      const visible = [];
+      cards.forEach(c => {
+        const cat = c.dataset.category || c.getAttribute('data-cat') || '';
+        const p = parseFloat(c.dataset.price || c.getAttribute('data-price') || '0') || 0;
+        const ok = (chosenCat === '' || cat === chosenCat) && p <= maxP;
+        c.style.display = ok ? '' : 'none';
+        if (ok) visible.push(c);
+      });
+
+      // simple sort
+      if (sortBy !== 'Default') {
+        const parent = cards[0].parentNode;
+        const sorted = visible.sort((a,b) => {
+          const pa = parseFloat(a.dataset.price||a.getAttribute('data-price')||0) || 0;
+          const pb = parseFloat(b.dataset.price||b.getAttribute('data-price')||0) || 0;
+          if (sortBy.startsWith('Price: Low')) return pa - pb;
+          if (sortBy.startsWith('Price: High')) return pb - pa;
+          return (b.dataset.date || 0) - (a.dataset.date || 0);
+        });
+        sorted.forEach(n => parent.appendChild(n));
+      }
+    }
+
+    // handle change events
+    catSelect.addEventListener('change', applyFilters);
+    sortSelect.addEventListener('change', applyFilters);
+  }
+
+  // ---------- Leaflet Map (dynamic load) ----------
+  function ensureLeafletLoaded(callback) {
+    if (window.L) return callback();
+    // add CSS
+    if (!document.querySelector('link[href*="leaflet"]')) {
+      const lcss = document.createElement('link');
+      lcss.rel = 'stylesheet';
+      lcss.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(lcss);
+    }
+    // add script
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    s.onload = () => callback();
+    document.body.appendChild(s);
+  }
+
+  function initStoreMap() {
+    // create container if not present
+    let mapWrap = q('#store-map-wrap');
+    if (!mapWrap) {
+      mapWrap = document.createElement('div');
+      mapWrap.id = 'store-map-wrap';
+      mapWrap.style.maxWidth = '1100px';
+      mapWrap.style.margin = '20px auto';
+      mapWrap.innerHTML = `
+        <h3 style="margin:0 0 8px">Find Us / Store Locator</h3>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+          <input id="ig-map-search" placeholder="Search address (e.g. Cape Town)" style="flex:1;padding:8px;border-radius:6px;border:1px solid #d0d0d0">
+          <button id="ig-map-search-btn" style="padding:8px 12px;border-radius:6px;background:#1a73e8;color:#fff;border:none;cursor:pointer">Search</button>
+          <button id="ig-map-locate" title="Use my location" style="padding:8px;border-radius:6px;border:1px solid #d0d0d0;background:#fff;cursor:pointer">Locate</button>
+        </div>
+        <div id="store-map"></div>
+      `;
+      const footer = q('footer') || q('.main-footer') || document.body;
+      footer.parentNode.insertBefore(mapWrap, footer);
+    }
+
+    ensureLeafletLoaded(() => {
+      // initialize map
+      const map = L.map('store-map', { scrollWheelZoom: false }).setView([-33.9249, 18.4241], 12); // default Cape Town
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      // sample store markers (edit to real coords)
+      const stores = [
+        { name: 'Goal Gear Cape Town', lat: -33.9249, lon: 18.4241, addr: 'Cape Town CBD' },
+        { name: 'Goal Gear Stellenbosch', lat: -33.9346, lon: 18.8600, addr: 'Stellenbosch' },
+        { name: 'Goal Gear Durbanville', lat: -33.8168, lon: 18.6476, addr: 'Durbanville' }
+      ];
+
+      const markers = L.layerGroup().addTo(map);
+      stores.forEach(s => {
+        const m = L.marker([s.lat, s.lon]).addTo(markers);
+        m.bindPopup(`<strong>${s.name}</strong><br>${s.addr}<br><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}">Get directions</a>`);
+      });
+
+      // locate button behavior
+      q('#ig-map-locate').addEventListener('click', () => {
+        map.locate({ setView: true, maxZoom: 14 });
+      });
+      map.on('locationerror', () => {
+        alert('Unable to determine location. Please allow location access or search manually.');
+      });
+
+      // search using Nominatim
+      const searchBtn = q('#ig-map-search-btn');
+      const searchInput = q('#ig-map-search');
+      searchBtn.addEventListener('click', () => {
+        const val = (searchInput.value || '').trim();
+        if (!val) return;
+        searchBtn.disabled = true;
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=1`)
+          .then(r => r.json()).then(data => {
+            if (data && data[0]) {
+              const lat = parseFloat(data[0].lat), lon = parseFloat(data[0].lon);
+              L.marker([lat, lon]).addTo(markers).bindPopup(`<strong>Search result</strong><br>${data[0].display_name}`).openPopup();
+              map.setView([lat, lon], 14);
+            } else {
+              alert('No results found.');
+            }
+          }).catch(() => alert('Search failed.')).finally(() => searchBtn.disabled = false);
+      });
+    });
+  }
+
+  // ---------- Init everything after DOM ready ----------
+  document.addEventListener('DOMContentLoaded', () => {
+    try { initLightbox(); } catch (e) { /* ignore */ }
+    try { initTooltips(); } catch (e) { /* ignore */ }
+    try { initProductFilters(); } catch (e) { /* ignore */ }
+    try { initStoreMap(); } catch (e) { /* ignore */ }
+  });
+})();
