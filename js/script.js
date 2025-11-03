@@ -112,16 +112,112 @@
     }
   });
 
-  // ADD BASIC SEO META IF MISSING (document.title left if already set)
+  // ADD BASIC SEO META IF MISSING + page-specific titles/descriptions + internal link polishing
   document.addEventListener('DOMContentLoaded', () => {
-    if (!document.querySelector('meta[name="description"]')) {
-      const m = document.createElement('meta');
-      m.name = 'description';
-      m.content = 'Goal Gear — premium soccer jerseys and kits. Browse products, contact support and shop online.';
-      document.head.appendChild(m);
+    const file = filename();
+
+    // site SEO map - edit text to suit your brand
+    const seoMap = {
+      'index.html': {
+        title: 'Goal Gear — Premium Soccer Jerseys & Kits',
+        description: 'Shop authentic and custom soccer jerseys at Goal Gear. Latest club and national kits, durable materials, fast shipping.'
+      },
+      'about.html': {
+        title: 'About Goal Gear — Our Story & Vision',
+        description: 'Learn about Goal Gear — our history, vision for sustainable jerseys, and commitment to quality soccer apparel.'
+      },
+      'products.html': {
+        title: 'Products — Kits, Jerseys & Custom Orders | Goal Gear',
+        description: 'Browse Goal Gear products: club kits, national team jerseys, and custom orders. Sizes for all ages and fast delivery.'
+      },
+      'enquiries.html': {
+        title: 'Enquiries — Quotes & Orders | Goal Gear',
+        description: 'Contact Goal Gear for bulk orders, quotes, and custom kit enquiries. Fast responses and friendly support.'
+      },
+      'contact.html': {
+        title: 'Contact Goal Gear — Support & Returns',
+        description: 'Get in touch with Goal Gear support for order help, returns, and size guidance. We’re happy to assist.'
+      }
+    };
+
+    // apply title + meta description
+    const seo = seoMap[file] || seoMap['index.html'];
+    if (seo && seo.title) document.title = seo.title;
+    let metaDesc = document.querySelector('meta[name="description"]');
+    if (!metaDesc) {
+      metaDesc = document.createElement('meta');
+      metaDesc.name = 'description';
+      document.head.appendChild(metaDesc);
+    }
+    metaDesc.content = seo.description;
+
+    // canonical link
+    if (!document.querySelector('link[rel="canonical"]')) {
+      const canon = document.createElement('link');
+      canon.rel = 'canonical';
+      const path = (file === 'index.html') ? '/' : `/${file}`;
+      canon.href = location.origin + path;
+      document.head.appendChild(canon);
     }
 
-    // Inject JSON-LD organization if missing
+    // polish nav link text and add titles for clearer internal linking
+    const navText = {
+      'index.html': 'Home',
+      'about.html': 'About Us',
+      'products.html': 'Products & Kits',
+      'enquiries.html': 'Enquiries',
+      'contact.html': 'Contact & Support'
+    };
+    qa('.main-nav a, .nav-links a').forEach(a => {
+      const href = (a.getAttribute('href') || '').replace('./', '').split('#')[0];
+      if (navText[href]) {
+        a.textContent = navText[href];
+        a.title = navText[href];
+        a.setAttribute('data-internal', '1');
+      }
+    });
+
+    // build small internal quick-links in footer if footer exists
+    const footer = q('footer') || q('.main-footer');
+    if (footer) {
+      const quick = document.createElement('nav');
+      quick.className = 'quick-links';
+      quick.setAttribute('aria-label', 'Quick links');
+      const links = [
+        {id: 'kits', text: 'Kits'},
+        {id: 'featured', text: 'Featured'},
+        {id: 'support', text: 'Support'}
+      ];
+      links.forEach(l => {
+        // add link only if there is an element with that id on page
+        if (document.getElementById(l.id)) {
+          const a = document.createElement('a');
+          a.href = `#${l.id}`;
+          a.textContent = l.text;
+          a.style.marginRight = '10px';
+          quick.appendChild(a);
+        }
+      });
+      if (quick.children.length) {
+        footer.insertBefore(quick, footer.firstChild);
+      }
+    }
+
+    // add/update Open Graph basics if missing
+    if (!document.querySelector('meta[property="og:title"]')) {
+      const ogTitle = document.createElement('meta');
+      ogTitle.setAttribute('property', 'og:title');
+      ogTitle.content = document.title;
+      document.head.appendChild(ogTitle);
+    }
+    if (!document.querySelector('meta[property="og:description"]')) {
+      const ogDesc = document.createElement('meta');
+      ogDesc.setAttribute('property', 'og:description');
+      ogDesc.content = metaDesc.content;
+      document.head.appendChild(ogDesc);
+    }
+
+    // inject basic JSON-LD organization (if not present)
     if (!document.querySelector('script[type="application/ld+json"]')) {
       const ld = document.createElement('script');
       ld.type = 'application/ld+json';
@@ -142,6 +238,8 @@
     .active-link { background: #0b53c1; color: #fff !important; padding: 6px 8px; border-radius: 4px; }
     .field-error { outline: 2px solid #e53935; background: #fff7f7; }
     .form-error { background:#fff0f0; border:1px solid #f2c6c6; padding:8px; border-radius:6px; }
+    .quick-links a { color: #1a73e8; text-decoration: none; font-weight: bold; margin-right: 8px; }
+    .quick-links a:hover { text-decoration: underline; }
     .scroll-top:focus{ outline: 3px solid rgba(11,83,193,0.25); }
   `;
   document.head.appendChild(styleEl);
